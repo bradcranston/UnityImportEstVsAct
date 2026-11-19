@@ -3,18 +3,816 @@
   <head>
     <meta charset="UTF-8" />
     <style>
-      @import "./src/style.css";
+      body {
+        background-color: #f5f5f5;
+        margin: 0;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      .container {
+        text-align: center;
+        background: white;
+        border-radius: 8px;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 40px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 40px;
+        font-size: 24px;
+      }
+
+      .progress-section {
+        margin: 40px 0;
+      }
+
+      #status-text {
+        color: #555;
+        min-height: 24px;
+        margin-bottom: 20px;
+        font-size: 16px;
+      }
+
+      .progress-bar {
+        background-color: #e0e0e0;
+        border-radius: 10px;
+        width: 100%;
+        height: 20px;
+        margin-bottom: 10px;
+        overflow: hidden;
+      }
+
+      #progress-fill {
+        background: linear-gradient(90deg, #007acc, #4fc3f7);
+        border-radius: 10px;
+        width: 0%;
+        height: 100%;
+        transition: width 0.3s ease;
+      }
+
+      #progress-percent {
+        color: #007acc;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      #result-info {
+        border-radius: 5px;
+        margin-top: 30px;
+        padding: 20px;
+        display: none;
+      }
+
+      .success {
+        color: #2e7d32;
+        background: #e8f5e8;
+        border: 1px solid #4caf50;
+      }
+
+      .error {
+        color: #c62828;
+        background: #ffebee;
+        border: 1px solid #f44336;
+      }
+
+      .processing {
+        color: #ef6c00;
+        background: #fff3e0;
+        border: 1px solid #ff9800;
+      }
+
+      .processing::after {
+        content: '';
+        border: 2px solid #ef6c00;
+        border-top-color: transparent;
+        border-radius: 50%;
+        width: 12px;
+        height: 12px;
+        margin-left: 10px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .progress-active #progress-fill {
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(0, 122, 204, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(0, 122, 204, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 122, 204, 0); }
+      }
     </style>
     <title>JSDev</title>
   </head>
   <body>
-    <h1>Alright. You're set.</h1>
-      <h2 class="tintedBlackLeft">Now build something amazing!</h2>
-      <p>JS in FM is amazing</p>
-    <button type="button">Click Me!</button>
+    <div class="container">
+      <h1>Tracker Report Parser</h1>
+      
+      <div class="progress-section">
+        <div id="status-text">Ready to parse data...</div>
+        <div class="progress-bar">
+          <div id="progress-fill"></div>
+        </div>
+        <div id="progress-percent">0%</div>
+      </div>
+      
+      <div id="result-info"></div>
+    </div>
 
-    <script type="module">
-      import "./src/index.js";
+    <script>
+      // Enhanced parser specifically for your tracker report format
+      class EnhancedTrackerParser {
+        constructor() {
+          this.parsedData = [];
+          this.debugMode = false;
+        }
+
+        parseSpecificFormat(text) {
+          // Detect which format we're dealing with
+          if (this.isSimpleColumnFormat(text)) {
+            return this.parseColumnFormat(text);
+          } else {
+            return this.parseStackedFormat(text);
+          }
+        }
+
+        isSimpleColumnFormat(text) {
+          // Check if text contains item numbers in format: 382974/2.1/3
+          // and times in separate columns
+          return /\d{6}\/[\d.]+\/\d+/.test(text) && text.includes('Item #');
+        }
+
+        parseColumnFormat(text) {
+          const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+          this.debug('Parsing column format with', lines.length, 'lines');
+          
+          const jobs = [];
+          const itemNumbers = [];
+          const allTimes = [];
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Detect item number section (format: 382974/2.1/3)
+            if (line.match(/^\d{6}\/[\d.]+\/\d+$/)) {
+              itemNumbers.push(line);
+              this.debug('Found item:', line);
+              continue;
+            }
+            
+            // Detect time entries (format: 0h 05:00 or 17h 30:00 or 1d 5h 15:43)
+            // More flexible regex to handle various time formats
+            if (line.match(/^\d+[hd]\s+\d+:\d+$/)) {
+              allTimes.push(line);
+              this.debug('Found time:', line);
+              continue;
+            }
+          }
+          
+          this.debug(`Found ${itemNumbers.length} items and ${allTimes.length} times`);
+          
+          // If we didn't find any items or times, return empty
+          if (itemNumbers.length === 0 || allTimes.length === 0) {
+            this.debug('ERROR: No items or times found!');
+            return jobs;
+          }
+          
+          // The times are in two blocks: first half is estimated, second half is actual
+          const halfPoint = Math.floor(allTimes.length / 2);
+          const estimatedTimes = allTimes.slice(0, halfPoint);
+          const actualTimes = allTimes.slice(halfPoint);
+          
+          this.debug(`Split into ${estimatedTimes.length} estimated and ${actualTimes.length} actual times`);
+          
+          // Match items to times
+          const minLength = Math.min(itemNumbers.length, estimatedTimes.length, actualTimes.length);
+          this.debug(`Matching ${minLength} items with times`);
+          
+          for (let i = 0; i < minLength; i++) {
+            const itemParts = itemNumbers[i].split('/');
+            jobs.push({
+              jobNumber: itemParts[0],
+              description: `Item ${itemNumbers[i]}`,
+              qty: itemParts[1] || '1',
+              startDate: '',
+              estimated: this.normalizeTime(estimatedTimes[i]),
+              actual: this.normalizeTime(actualTimes[i]),
+              numberOfStitches: '',
+              notes: ''
+            });
+          }
+          
+          this.debug('Parsed', jobs.length, 'jobs from column format');
+          return jobs;
+        }
+
+        normalizeTime(timeStr) {
+          // Convert formats like "0h 05:00" or "1d 5h 15:43" to "0 Hrs 05:00"
+          if (!timeStr) return '0 Hrs 00:00';
+          
+          // Handle day format: "1d 5h 15:43"
+          const dayMatch = timeStr.match(/(\d+)d\s+(\d+)h\s+(\d+):(\d+)/);
+          if (dayMatch) {
+            const totalHours = parseInt(dayMatch[1]) * 24 + parseInt(dayMatch[2]);
+            return `${totalHours} Hrs ${dayMatch[3]}:${dayMatch[4]}`;
+          }
+          
+          // Handle hour format: "0h 05:00"
+          const hourMatch = timeStr.match(/(\d+)h\s+(\d+):(\d+)/);
+          if (hourMatch) {
+            return `${hourMatch[1]} Hrs ${hourMatch[2]}:${hourMatch[3]}`;
+          }
+          
+          return timeStr;
+        }
+
+        parseStackedFormat(text) {
+          this.debug('Parsing stacked format');
+          const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+          const jobs = [];
+          let currentJob = null;
+          let i = 0;
+          
+          // Find estimated vs actual time sections
+          const timeBlocks = this.findTimeBlocks(lines);
+
+          this.debug('Starting parse with', lines.length, 'lines');
+          this.debug('Found time blocks:', timeBlocks.length);
+
+          while (i < lines.length) {
+            const line = lines[i];
+            
+            // Look for job number pattern (6 digits followed by description)
+            const jobMatch = line.match(/^(\d{6})\s+(.+)$/);
+            
+            if (jobMatch) {
+              // Save previous job
+              if (currentJob && this.isValidJob(currentJob)) {
+                jobs.push(currentJob);
+              }
+
+              // Start new job
+              currentJob = {
+                jobNumber: jobMatch[1],
+                description: this.cleanDescription(jobMatch[2]),
+                qty: 1,
+                startDate: '',
+                estimated: '0 Hrs 00:00',
+                actual: '0 Hrs 00:00',
+                numberOfStitches: '',
+                notes: ''
+              };
+
+              this.debug('Found job:', currentJob.jobNumber, currentJob.description);
+
+              // Look ahead for related data
+              let lookAhead = 1;
+              while (i + lookAhead < lines.length && lookAhead < 15) {
+                const nextLine = lines[i + lookAhead];
+                
+                // Extract date (usually appears after description)
+                if (!currentJob.startDate && /\d{1,2}\/\d{1,2}\/\d{4}/.test(nextLine)) {
+                  const dateMatch = nextLine.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+                  if (dateMatch) {
+                    currentJob.startDate = dateMatch[1];
+                    this.debug('Found date:', currentJob.startDate);
+                  }
+                }
+
+                // Extract quantity (standalone number, usually small)
+                if (/^\d{1,3}$/.test(nextLine) && parseInt(nextLine) < 1000) {
+                  currentJob.qty = parseInt(nextLine);
+                  this.debug('Found quantity:', currentJob.qty);
+                }
+
+                // Extract number of stitches
+                if (nextLine.includes('Number of Stitches')) {
+                  const prevLine = lines[i + lookAhead - 1];
+                  const stitchMatch = prevLine.match(/(\d{1,3}(?:,\d{3})*)/);
+                  if (stitchMatch) {
+                    currentJob.numberOfStitches = stitchMatch[1].replace(/,/g, '');
+                    this.debug('Found stitches:', currentJob.numberOfStitches);
+                  }
+                }
+
+                // Extract times and calculate actual duration
+                const timePattern = /(\d{1,2}:\d{2}:\d{2}\s+[AP]M)/g;
+                const times = nextLine.match(timePattern);
+                if (times && times.length >= 2) {
+                  currentJob.startTime = times[0];
+                  currentJob.endTime = times[times.length - 1];
+                  currentJob.actual = this.calculateDuration(times[0], times[times.length - 1]);
+                  this.debug('Found times:', currentJob.startTime, 'to', currentJob.endTime, '=', currentJob.actual);
+                }
+
+                // Look for notes (descriptive text lines)
+                if (this.isNoteLine(nextLine)) {
+                  currentJob.notes = nextLine;
+                  this.debug('Found note:', currentJob.notes);
+                }
+
+                lookAhead++;
+                
+                // Stop looking ahead if we hit another job number
+                if (/^\d{6}\s+/.test(nextLine)) {
+                  break;
+                }
+              }
+              
+              // Try to find estimated/actual times from time blocks
+              const timeData = this.findTimeForJob(currentJob.jobNumber, timeBlocks);
+              if (timeData) {
+                if (timeData.estimated) currentJob.estimated = timeData.estimated;
+                if (timeData.actual) currentJob.actual = timeData.actual;
+                this.debug('Found time block data for', currentJob.jobNumber, timeData);
+              } else {
+                // If no time block data found but we calculated actual time, keep it
+                this.debug('No time block data found for', currentJob.jobNumber, 'keeping calculated actual:', currentJob.actual);
+              }
+              
+              // Skip processed lines
+              i += Math.min(lookAhead - 1, 5);
+            }
+            
+            i++;
+          }
+
+          // Add the last job
+          if (currentJob && this.isValidJob(currentJob)) {
+            jobs.push(currentJob);
+          }
+
+          this.debug('Parsed', jobs.length, 'total jobs');
+          return jobs;
+        }
+
+        findTimeBlocks(lines) {
+          const timeBlocks = [];
+          let currentBlock = null;
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Look for "Estimated" header (can be on separate line from "Actual")
+            if (line.trim() === 'Estimated' || (line.includes('Estimated') && line.includes('Actual'))) {
+              // Check if next line is "Actual" or if this line contains both
+              const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
+              if (nextLine === 'Actual' || line.includes('Actual')) {
+                currentBlock = {
+                  startIndex: i,
+                  jobs: []
+                };
+                continue;
+              }
+            }
+            
+            // Look for time pairs in format "X Hrs XX:XX X Hrs XX:XX"
+            const timePattern = /(\d+)\s+Hrs\s+(\d{2}):(\d{2})\s+(\d+)\s+Hrs\s+(\d{2}):(\d{2})/;
+            const timeMatch = line.match(timePattern);
+            
+            if (timeMatch && currentBlock) {
+              const estimated = `${timeMatch[1]} Hrs ${timeMatch[2]}:${timeMatch[3]}`;
+              const actual = `${timeMatch[4]} Hrs ${timeMatch[5]}:${timeMatch[6]}`;
+              
+              // Try to find associated job number nearby (expand search range)
+              let jobNumber = null;
+              for (let j = Math.max(0, i - 20); j < Math.min(lines.length, i + 10); j++) {
+                const jobMatch = lines[j].match(/(\d{6})/);
+                if (jobMatch) {
+                  jobNumber = jobMatch[1];
+                  break;
+                }
+              }
+              
+              // If no job number found nearby, try to match by position in time blocks
+              if (!jobNumber && currentBlock.jobs.length < 50) {
+                // Use a placeholder that we can match later by position
+                jobNumber = `POSITION_${currentBlock.jobs.length}`;
+              }
+              
+              currentBlock.jobs.push({
+                jobNumber,
+                estimated,
+                actual,
+                lineIndex: i
+              });
+            }
+            
+            // End block if we hit a page break or new section
+            if (line.includes('Page') && currentBlock) {
+              timeBlocks.push(currentBlock);
+              currentBlock = null;
+            }
+          }
+          
+          if (currentBlock) {
+            timeBlocks.push(currentBlock);
+          }
+          
+          return timeBlocks;
+        }
+
+        findTimeForJob(jobNumber, timeBlocks) {
+          // First try exact job number match
+          for (const block of timeBlocks) {
+            for (const timeEntry of block.jobs) {
+              if (timeEntry.jobNumber === jobNumber) {
+                return {
+                  estimated: timeEntry.estimated,
+                  actual: timeEntry.actual
+                };
+              }
+            }
+          }
+          
+          // If no exact match and there are time blocks, try positional matching
+          // This is a fallback for when job numbers aren't properly associated
+          if (timeBlocks.length > 0) {
+            this.debug(`No exact match found for job ${jobNumber}, trying fallback matching`);
+          }
+          
+          return null;
+        }
+
+        cleanDescription(desc) {
+          // Remove dates and times from description
+          return desc
+            .replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, '')
+            .replace(/\d{1,2}:\d{2}:\d{2}\s+[AP]M/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+
+        isValidJob(job) {
+          return job.jobNumber && job.jobNumber.length === 6 && job.description;
+        }
+
+        isNoteLine(line) {
+          const notePatterns = [
+            /ran on.*machine/i,
+            /also did/i,
+            /sewout/i,
+            /customer/i,
+            /provided/i,
+            /supplied/i
+          ];
+          
+          return notePatterns.some(pattern => pattern.test(line)) && !line.match(/^\d{6}/);
+        }
+
+        calculateDuration(startTime, endTime) {
+          try {
+            const start = this.parseTimeString(startTime);
+            const end = this.parseTimeString(endTime);
+            
+            let diffMs = end.getTime() - start.getTime();
+            if (diffMs < 0) {
+              // Handle crossing midnight
+              diffMs += 24 * 60 * 60 * 1000;
+            }
+            
+            const hours = Math.floor(diffMs / (1000 * 60 * 60));
+            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+            
+            return `${hours} Hrs ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          } catch (error) {
+            this.debug('Time calculation error:', error.message);
+            return '0 Hrs 00:00';
+          }
+        }
+
+        parseTimeString(timeStr) {
+          const match = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})\s+([AP]M)/);
+          if (!match) throw new Error('Invalid time format');
+          
+          let hours = parseInt(match[1]);
+          const minutes = parseInt(match[2]);
+          const seconds = parseInt(match[3]);
+          const period = match[4];
+          
+          if (period === 'PM' && hours !== 12) {
+            hours += 12;
+          } else if (period === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          const date = new Date();
+          date.setHours(hours, minutes, seconds, 0);
+          return date;
+        }
+
+        debug(...args) {
+          if (this.debugMode) {
+            console.log('[TrackerParser]', ...args);
+          }
+        }
+      }
+
+      // Tracker Report Parser for FileMaker Integration
+      class TrackerReportParser {
+        constructor() {
+          this.statusText = document.getElementById('status-text');
+          this.progressFill = document.getElementById('progress-fill');
+          this.progressPercent = document.getElementById('progress-percent');
+          this.resultInfo = document.getElementById('result-info');
+          this.progressBar = document.querySelector('.progress-bar');
+          this.exposeToFileMaker();
+          this.updateStatus('Ready to parse data...');
+        }
+
+        updateStatus(message) {
+          this.statusText.textContent = message;
+        }
+
+        updateProgress(percent, message = null) {
+          this.progressFill.style.width = percent + '%';
+          this.progressPercent.textContent = Math.round(percent) + '%';
+          if (message) {
+            this.updateStatus(message);
+          }
+        }
+
+        showResult(type, message) {
+          this.resultInfo.className = type;
+          this.resultInfo.textContent = message;
+          this.resultInfo.style.display = 'block';
+          
+          // Auto-hide after 5 seconds for success messages
+          if (type === 'success') {
+            setTimeout(() => {
+              this.resultInfo.style.display = 'none';
+            }, 5000);
+          }
+        }
+
+        async parseTrackerData(textData) {
+          try {
+            this.updateStatus('Starting parse...');
+            this.updateProgress(10);
+            this.progressBar.classList.add('progress-active');
+            
+            // Use enhanced parser
+            const parser = new EnhancedTrackerParser();
+            this.updateProgress(30, 'Parsing job data...');
+            
+            const parsedJobs = parser.parseSpecificFormat(textData);
+            this.updateProgress(70, 'Preparing JSON data...');
+            
+            if (parsedJobs.length === 0) {
+              throw new Error('No jobs found in the provided text');
+            }
+
+            this.updateProgress(90, 'Calling FileMaker script...');
+            
+            // Call FileMaker script with JSON data
+            try {
+              this.callFileMakerScript('ProcessTrackerReportJSON', JSON.stringify(parsedJobs));
+            } catch (fmError) {
+              console.warn('FileMaker script call failed:', fmError);
+              // Continue execution even if FileMaker script fails
+            }
+            
+            this.updateProgress(100, 'Parse complete!');
+            
+            this.progressBar.classList.remove('progress-active');
+            this.showResult('success', `Successfully parsed ${parsedJobs.length} jobs`);
+            
+            // Reset progress after a short delay
+            setTimeout(() => {
+              this.updateProgress(0, 'Ready to parse data...');
+            }, 2000);
+            
+            return {
+              success: true,
+              jobCount: parsedJobs.length,
+              jobsData: parsedJobs
+            };
+            
+          } catch (error) {
+            this.progressBar.classList.remove('progress-active');
+            this.updateProgress(0, 'Parse failed');
+            this.showResult('error', 'Parse failed: ' + error.message);
+            
+            return {
+              success: false,
+              error: error.message,
+              jobsData: null
+            };
+          }
+        }
+
+        // Call FileMaker script with data
+        callFileMakerScript(scriptName, parameter) {
+          try {
+            // Method 1: Try window.FileMaker API (newer FileMaker versions)
+            if (window.FileMaker && window.FileMaker.PerformScript) {
+              window.FileMaker.PerformScript(scriptName, parameter);
+              console.log('Called FileMaker script via FileMaker API:', scriptName);
+              return;
+            }
+            
+            // Method 2: Try fmp:// URL scheme
+            const fmpUrl = `fmp://$/${scriptName}?script=${encodeURIComponent(scriptName)}&param=${encodeURIComponent(parameter)}`;
+            window.location.href = fmpUrl;
+            console.log('Called FileMaker script via fmp:// URL:', scriptName);
+          } catch (error) {
+            console.error('Failed to call FileMaker script:', error);
+            throw error;
+          }
+        }
+
+
+
+        // Main function that FileMaker will call
+        exposeToFileMaker() {
+          const self = this; // Store reference for use in functions
+
+          // Primary function for FileMaker to call - returns full result as JSON
+          window.parseTrackerReport = async (textData) => {
+            try {
+              const result = await self.parseTrackerData(textData);
+              return JSON.stringify(result);
+            } catch (error) {
+              return JSON.stringify({
+                success: false,
+                error: error.message,
+                jobsData: null
+              });
+            }
+          };
+
+          // Function that parses AND automatically calls FileMaker script
+          window.parseAndProcessTrackerReport = async (textData) => {
+            try {
+              const result = await self.parseTrackerData(textData);
+              
+              if (result.success && result.jobsData) {
+                // Automatically call FileMaker script with JSON data
+                self.callFileMakerScript('ProcessTrackerReportJSON', JSON.stringify(result.jobsData));
+              }
+              
+              return JSON.stringify(result);
+            } catch (error) {
+              return JSON.stringify({
+                success: false,
+                error: error.message,
+                jobsData: null
+              });
+            }
+          };
+
+          // Utility function to get just the JSON job data
+          window.getJobsJSON = async (textData) => {
+            try {
+              const result = await self.parseTrackerData(textData);
+              console.log('getJobsJSON - Full result:', result);
+              console.log('getJobsJSON - jobsData:', result.jobsData);
+              return JSON.stringify(result.jobsData || []);
+            } catch (error) {
+              console.error('getJobsJSON error:', error);
+              return '[]';
+            }
+          };
+
+          // Manual FileMaker script caller with JSON data
+          window.callFileMakerScriptWithJSON = (jobsData) => {
+            try {
+              self.callFileMakerScript('ProcessTrackerReportJSON', jobsData);
+              return JSON.stringify({ success: true, message: 'Script called successfully' });
+            } catch (error) {
+              return JSON.stringify({ success: false, error: error.message });
+            }
+          };
+
+          // Test function with sample data
+          window.testParser = async () => {
+            const sampleData = `383267 Embroidered Women's Qu 1/2/2025
+1
+1/2/2025
+1/2/2025
+5,000
+Number of Stitches
+6:19:13 AM
+6:25:20 AM
+6:25:20 AM`;
+            
+            return await self.parseTrackerData(sampleData);
+          };
+
+          // Function for FileMaker to parse raw PDF text format (stacked format)
+          window.parseRawTrackerData = async (textData) => {
+            try {
+              self.updateStatus('Parsing raw tracker data...');
+              self.updateProgress(10);
+              self.progressBar.classList.add('progress-active');
+              
+              console.log('parseRawTrackerData called with text length:', textData.length);
+              
+              // Use enhanced parser
+              const parser = new EnhancedTrackerParser();
+              parser.debugMode = true; // Enable debug logging
+              self.updateProgress(30, 'Parsing job data...');
+              
+              console.log('Calling parser.parseSpecificFormat...');
+              const parsedJobs = parser.parseSpecificFormat(textData);
+              console.log('Parser returned', parsedJobs.length, 'jobs');
+              
+              self.updateProgress(70, 'Formatting results...');
+              
+              if (parsedJobs.length === 0) {
+                console.error('No jobs found - check console for parser debug output');
+                throw new Error('No jobs found in the provided text');
+              }
+
+              // Format as tab-delimited data (easier for FileMaker to parse)
+              const tabDelimited = self.convertToTabDelimited(parsedJobs);
+              self.updateProgress(100, 'Parse complete!');
+              
+              self.progressBar.classList.remove('progress-active');
+              self.showResult('success', `Successfully parsed ${parsedJobs.length} jobs from raw data`);
+              
+              // Reset progress after a short delay
+              setTimeout(() => {
+                self.updateProgress(0, 'Ready to parse data...');
+              }, 2000);
+              
+              return JSON.stringify({
+                success: true,
+                jobCount: parsedJobs.length,
+                tabDelimitedData: tabDelimited,
+                jobsData: parsedJobs
+              });
+              
+            } catch (error) {
+              console.error('parseRawTrackerData error:', error);
+              self.progressBar.classList.remove('progress-active');
+              self.updateProgress(0, 'Parse failed');
+              self.showResult('error', 'Parse failed: ' + error.message);
+              
+              return JSON.stringify({
+                success: false,
+                error: error.message,
+                tabDelimitedData: null,
+                jobsData: null
+              });
+            }
+          };
+        }
+
+        convertToTabDelimited(jobs) {
+          // Tab-delimited format for FileMaker
+          const headers = [
+            'Job Number',
+            'Quantity', 
+            'Description',
+            'Start Date',
+            'Estimated',
+            'Actual',
+            'Number of Stitches',
+            'Notes'
+          ];
+          
+          // Create tab-delimited content
+          let output = headers.join('\t') + '\n';
+          
+          jobs.forEach(job => {
+            const row = [
+              job.jobNumber || '',
+              job.qty || '1',
+              job.description || '',
+              job.startDate || '',
+              job.estimated || '0 Hrs 00:00',
+              job.actual || '0 Hrs 00:00',
+              job.numberOfStitches || '',
+              job.notes || ''
+            ];
+            output += row.join('\t') + '\n';
+          });
+          
+          return output;
+        }
+      }
+
+      // Initialize when DOM is loaded
+      document.addEventListener('DOMContentLoaded', () => {
+        new TrackerReportParser();
+        
+        // Make classes available globally
+        window.EnhancedTrackerParser = EnhancedTrackerParser;
+        window.TrackerReportParser = TrackerReportParser;
+      });
+
+      console.log('Tracker Report Parser ready for FileMaker integration.');
     </script>
   </body>
 </html>

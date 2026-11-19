@@ -1,0 +1,101 @@
+FileMaker Script Examples for PDF Parser Integration
+====================================================
+
+These scripts should be created in FileMaker Pro to interact with the webviewer.
+
+1. SCRIPT: "ProcessParsedData"
+   Purpose: Receives parsed data from JavaScript and processes it
+   
+   Parameters: JSON data from JavaScript
+   
+   Script Steps:
+   Set Variable [$jsonData; Value: Get(ScriptParameter)]
+   Set Variable [$parsedArray; Value: JSONFormatElements($jsonData)]
+   
+   Loop
+     Exit Loop If [$$index > ValueCount($parsedArray)]
+     Set Variable [$currentRecord; Value: GetValue($parsedArray; $$index)]
+     Set Variable [$jobNumber; Value: JSONGetElement($currentRecord; "jobNumber")]
+     Set Variable [$qty; Value: JSONGetElement($currentRecord; "qty")]
+     Set Variable [$description; Value: JSONGetElement($currentRecord; "description")]
+     Set Variable [$startDate; Value: JSONGetElement($currentRecord; "startDate")]
+     Set Variable [$estimated; Value: JSONGetElement($currentRecord; "estimated")]
+     Set Variable [$actual; Value: JSONGetElement($currentRecord; "actual")]
+     Set Variable [$stitches; Value: JSONGetElement($currentRecord; "numberOfStitches")]
+     Set Variable [$notes; Value: JSONGetElement($currentRecord; "notes")]
+     
+     # Create new record or update existing
+     New Record/Request
+     Set Field [YourTable::JobNumber; $jobNumber]
+     Set Field [YourTable::Quantity; $qty]
+     Set Field [YourTable::Description; $description]
+     Set Field [YourTable::StartDate; $startDate]
+     Set Field [YourTable::Estimated; $estimated]
+     Set Field [YourTable::Actual; $actual]
+     Set Field [YourTable::NumberOfStitches; $stitches]
+     Set Field [YourTable::Notes; $notes]
+     
+     Set Variable [$$index; Value: $$index + 1]
+   End Loop
+   
+   Show Custom Dialog ["Import Complete"; "Successfully imported " & $$index - 1 & " records."]
+
+2. SCRIPT: "LoadTrackerData"
+   Purpose: Load PDF text data into the webviewer for parsing
+   
+   Script Steps:
+   Set Variable [$trackerText; Value: YourTable::TrackerReportText]
+   Perform JavaScript in Web Viewer [Result: $result; Function: "parseTrackerData('" & $trackerText & "')"]
+   
+   If [$result contains "success"]
+     Show Custom Dialog ["Parse Complete"; "Data parsed successfully"]
+   Else
+     Show Custom Dialog ["Parse Error"; JSONGetElement($result; "error")]
+   End If
+
+3. SCRIPT: "GetParsedData"
+   Purpose: Retrieve parsed data from JavaScript without processing
+   
+   Script Steps:
+   Perform JavaScript in Web Viewer [Result: $parsedData; Function: "getParsedData()"]
+   Set Field [YourTable::ParsedDataJSON; $parsedData]
+
+4. SCRIPT: "ClearParser"
+   Purpose: Clear all data from the parser interface
+   
+   Script Steps:
+   Perform JavaScript in Web Viewer [Result: $result; Function: "clearParserData()"]
+
+5. WEBVIEWER SETUP:
+   - Create a webviewer object on your layout
+   - Set the web address to: file:///path/to/your/index.html
+   - Or use a data URL with the HTML content
+   - Size: Minimum 800x600 for good usability
+
+6. FIELD SETUP (Suggested table structure):
+   - JobNumber (Text)
+   - Quantity (Number)
+   - Description (Text)
+   - StartDate (Date)
+   - Estimated (Text)
+   - Actual (Text)
+   - NumberOfStitches (Number)
+   - Notes (Text)
+   - TrackerReportText (Text, for storing raw PDF text)
+   - ParsedDataJSON (Text, for storing JSON results)
+
+7. BUTTON SCRIPTS:
+   Create buttons on your layout with these scripts:
+   - "Upload PDF" → Triggers file dialog or paste field
+   - "Parse Data" → Runs LoadTrackerData script
+   - "Import Results" → Runs ProcessParsedData script
+   - "Clear" → Runs ClearParser script
+
+8. ERROR HANDLING:
+   Always check the result of JavaScript functions:
+   
+   If [JSONGetElement($result; "success") = 1]
+     # Success handling
+   Else
+     Show Custom Dialog ["Error"; JSONGetElement($result; "error")]
+   End If

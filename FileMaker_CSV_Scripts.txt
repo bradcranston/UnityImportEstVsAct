@@ -1,0 +1,152 @@
+FileMaker Script Examples for Simplified CSV Parser
+=====================================================
+
+MAIN SCRIPT: "ProcessTrackerCSV" 
+===============================
+*** THIS SCRIPT NAME IS IMPORTANT - JavaScript automatically calls it ***
+
+Purpose: Receives CSV data from JavaScript parser
+
+Parameters: CSV data string from JavaScript
+
+Script Steps:
+Set Variable [$csvData; Value: Get(ScriptParameter)]
+
+# Validate we received data
+If [IsEmpty($csvData)]
+    Show Custom Dialog ["Error"; "No CSV data received from parser"]
+    Exit Script []
+End If
+
+# Optional: Store the raw CSV data
+Set Field [YourTable::RawCSVData; $csvData]
+
+# Parse CSV into FileMaker records
+Set Variable [$lines; Value: Substitute($csvData; "¶"; "|")]
+Set Variable [$lineCount; Value: ValueCount($lines)]
+Set Variable [$headerLine; Value: GetValue($lines; 1)]  // Skip header
+
+# Process each data line (starting from line 2)
+Set Variable [$$lineNum; Value: 2]
+Loop
+    Exit Loop If [$$lineNum > $lineCount]
+    
+    Set Variable [$currentLine; Value: GetValue($lines; $$lineNum)]
+    
+    # Parse CSV line (basic parsing - may need enhancement for quoted fields)
+    Set Variable [$jobNumber; Value: GetValue(Substitute($currentLine; ","; "|"); 1)]
+    Set Variable [$quantity; Value: GetValue(Substitute($currentLine; ","; "|"); 2)]
+    Set Variable [$description; Value: GetValue(Substitute($currentLine; ","; "|"); 3)]
+    Set Variable [$startDate; Value: GetValue(Substitute($currentLine; ","; "|"); 4)]
+    Set Variable [$estimated; Value: GetValue(Substitute($currentLine; ","; "|"); 5)]
+    Set Variable [$actual; Value: GetValue(Substitute($currentLine; ","; "|"); 6)]
+    Set Variable [$stitches; Value: GetValue(Substitute($currentLine; ","; "|"); 7)]
+    Set Variable [$notes; Value: GetValue(Substitute($currentLine; ","; "|"); 8)]
+    
+    # Create new record
+    New Record/Request
+    Set Field [YourTable::JobNumber; $jobNumber]
+    Set Field [YourTable::Quantity; $quantity]
+    Set Field [YourTable::Description; $description]
+    Set Field [YourTable::StartDate; $startDate]
+    Set Field [YourTable::Estimated; $estimated]
+    Set Field [YourTable::Actual; $actual]
+    Set Field [YourTable::NumberOfStitches; $stitches]
+    Set Field [YourTable::Notes; $notes]
+    Set Field [YourTable::ImportDate; Get(CurrentTimeStamp)]
+    
+    Set Variable [$$lineNum; Value: $$lineNum + 1]
+End Loop
+
+Show Custom Dialog ["Import Complete"; "Successfully imported " & ($$lineNum - 2) & " tracker records."]
+
+
+ALTERNATIVE SCRIPT: "ParseTrackerData"
+====================================
+
+Purpose: Trigger parsing from FileMaker button/script
+
+Script Steps:
+Set Variable [$trackerText; Value: YourTable::TrackerReportText]
+
+# Call the JavaScript function (it will automatically call ProcessTrackerCSV)
+Perform JavaScript in Web Viewer [
+  Result: $result; 
+  Function: "parseTrackerReportToCSV('" & Substitute($trackerText; "'"; "\'") & "')"
+]
+
+# The CSV processing happens automatically via ProcessTrackerCSV script
+# Optional: Check the result
+Set Variable [$success; Value: JSONGetElement($result; "success")]
+If [$success ≠ 1]
+    Set Variable [$error; Value: JSONGetElement($result; "error")]
+    Show Custom Dialog ["Parse Error"; $error]
+End If
+
+
+CONFIGURATION SCRIPT: "SetParserScript"
+======================================
+
+Purpose: Change which FileMaker script the parser calls
+
+Script Steps:
+# Set custom script name (default is "ProcessTrackerCSV")
+Perform JavaScript in Web Viewer [
+  Function: "setFileMakerScript('YourCustomScriptName')"
+]
+
+
+WEBVIEWER SETUP:
+===============
+
+1. Create webviewer object on your layout
+2. Set web address to: file:///path/to/your/dist/index.html
+3. Size: Minimum 400x200 (shows progress bar)
+4. The webviewer will automatically call your FileMaker script
+
+WORKFLOW:
+========
+
+1. User pastes/loads tracker report text into FileMaker field
+2. User clicks "Parse" button (runs "ParseTrackerData" script)
+3. JavaScript parses the text and converts to CSV
+4. JavaScript automatically calls "ProcessTrackerCSV" script with CSV data
+5. FileMaker imports the CSV data into your table
+6. User sees success message
+
+SUGGESTED FIELD STRUCTURE:
+=========================
+
+Table: TrackerReports
+- ID (Number, Auto-enter serial)
+- TrackerReportText (Text, unlimited)
+- RawCSVData (Text, unlimited)
+- ImportDate (Timestamp)
+
+Table: JobTracking  
+- JobNumber (Text)
+- Quantity (Number)
+- Description (Text) 
+- StartDate (Date)
+- Estimated (Text)
+- Actual (Text)
+- NumberOfStitches (Number)
+- Notes (Text)
+- ImportDate (Timestamp)
+
+IMPORTANT NOTES:
+===============
+
+- The script name "ProcessTrackerCSV" is the default that JavaScript calls
+- You can change this with setFileMakerScript() function
+- The CSV data is passed as the script parameter
+- Parsing and FileMaker script calling happens automatically
+- No need to manually retrieve CSV data - it's sent automatically
+
+ERROR HANDLING:
+==============
+
+If the JavaScript fails to call your FileMaker script:
+- Check that the script name matches exactly
+- Ensure the webviewer has proper FileMaker integration
+- Verify script exists and has correct permissions
